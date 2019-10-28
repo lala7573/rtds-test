@@ -1,0 +1,10 @@
+.dockerignore
+Dockerfile
+.idea/
+target/
+*.md
+!README.md
+.project.info
+*.env
+*.iml
+*.tgz
