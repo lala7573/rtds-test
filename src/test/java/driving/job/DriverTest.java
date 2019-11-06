@@ -3,25 +3,59 @@ package driving.job;
 import driving.job.Driver.DrivingBuilder;
 import driving.model.DriveEvent;
 import java.util.List;
+import java.util.Properties;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.Test;
+import util.JsonUtils;
 
 public class DriverTest {
   @Test
+  public void produceKafka() {
+    Properties props = new Properties();
+    props.put("bootstrap.servers", "localhost:9092");
+    props.put("acks", "all");
+    props.put("retries", 0);
+    props.put("batch.size", 16384);
+    props.put("linger.ms", 1);
+    props.put("buffer.memory", 33554432);
+    props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+    props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+
+    Producer<String, String> producer = new KafkaProducer<>(props);
+
+    for (DriveEvent i: fastFinishDriver("ppoya", "집")) {
+      String message = JsonUtils.writeAsString(i);
+      producer.send(new ProducerRecord<>("input-topic", message));
+    }
+
+
+    producer.close();
+  }
+  @Test
   public void test() {
+
     for(DriveEvent i: fastFinishDriver("joanne", "H스퀘어")) {
-      System.out.println(i);
+      System.out.println(JsonUtils.writeAsString(i));
 //      for (DriveCoordinate coordinate: i.getCoordinates()) {
 //        System.out.println(coordinate);
 //      }
     }
-  }
 
-  @Test
-  public void test2() {
-    System.out.println(1 ^ 2 ^ 3);
-    System.out.println(1 ^ 3);
+    for(DriveEvent i: suddenStopDriver("dana", "동은i유치원")) {
+      System.out.println(JsonUtils.writeAsString(i));
+//      for (DriveCoordinate coordinate: i.getCoordinates()) {
+//        System.out.println(coordinate);
+//      }
+    }
 
-    System.out.println((1 ^ 2 ^ 3) ^ (1 ^ 3));
+    for(DriveEvent i: suddenStopDriver("jeonghee", "서울교대")) {
+      System.out.println(JsonUtils.writeAsString(i));
+//      for (DriveCoordinate coordinate: i.getCoordinates()) {
+//        System.out.println(coordinate);
+//      }
+    }
   }
 
 

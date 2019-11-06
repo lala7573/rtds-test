@@ -15,6 +15,7 @@ import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
+import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -46,16 +47,18 @@ public class DrivingScoreJobTest {
 
       @Override
       public void run(SourceContext<String> ctx) throws Exception {
+
         for (DriveEvent event: DriverTest.suddenStopDriver("joanne", "H스퀘어")) {
           System.out.println(JsonUtils.writeAsString(event));
           ctx.collect(JsonUtils.writeAsString(event));
-//          Thread.sleep(1000 * 1);
+          Thread.sleep(1000 * 1);
         }
 
-//        for (DriveEvent event: DriverTest.normalDriver("dana", "동은유치원")) {
-//          System.out.println(JsonUtils.writeAsString(event));
-//          ctx.collect(JsonUtils.writeAsString(event));
-//        }
+        for (DriveEvent event: DriverTest.normalDriver("dana", "동은유치원")) {
+          System.out.println(JsonUtils.writeAsString(event));
+          ctx.collect(JsonUtils.writeAsString(event));
+          Thread.sleep(1000 * 1);
+        }
 
         while(CollectSink.values.size() == 0) {
           Thread.sleep(1000 * 5);
@@ -74,9 +77,11 @@ public class DrivingScoreJobTest {
     });
 
 //        .addSink(new CollectDriveEvent());
+
     DrivingScoreJob.process(dataStream).addSink(new CollectSink()).name("TestSink");
-    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
     // execute
+
+    System.out.println(env.getStreamTimeCharacteristic());
     env.execute("Hello, World!");
 
     // verify your results
@@ -86,14 +91,14 @@ public class DrivingScoreJobTest {
   }
 
   // create a testing sink
-  private static class CollectSink implements SinkFunction<DriveSummary> {
+  private static class CollectSink implements SinkFunction<String> {
 
     // must be static
-    public static final ArrayList<DriveSummary> values = new ArrayList<>();
+    public static final ArrayList<String> values = new ArrayList<>();
 
     @Override
-    public synchronized void invoke(DriveSummary value) throws Exception {
-      System.out.println(JsonUtils.writeAsString(value));
+    public synchronized void invoke(String value) throws Exception {
+      System.out.println(value);
       values.add(value);
     }
   }

@@ -17,36 +17,32 @@ import lombok.extern.slf4j.Slf4j;
 public class DriveSummary {
   String userId;
   String destination;
-  List<DriveCoordinate> coordinates;
+  int size;
   List<DrivingScore> scores;
 
   public static DriveSummary create(List<DriveEvent> driveEvents) {
-    log.info("size {}",driveEvents.size());
-    for(DriveEvent x: driveEvents) {
-      log.info("" + x);
-    }
+    log.info("DriveSummary DriveEvent.size {}", driveEvents.size());
+//    for(DriveEvent x: driveEvents) {
+//      log.info("" + x);
+//    }
     DriveSummary drivingScore = new DriveSummary();
 
     DriveEvent first = driveEvents.get(0);
     drivingScore.userId = first.userId;
     drivingScore.destination = first.destination;
-    drivingScore.coordinates = new ArrayList<>();
+    drivingScore.size = driveEvents.size();
     drivingScore.scores = new ArrayList<>();
 
+    List<DriveCoordinate> coordinates = new ArrayList<>();
     Collections.sort(driveEvents,
         Comparator.comparingInt(DriveEvent::getMessageSequenceNumber));
 
-    for (DriveEvent driveEvent: driveEvents) {
-      drivingScore.coordinates.addAll(driveEvent.coordinates);
-    }
-
-    // TODO 왜 ???
-    if (drivingScore.coordinates.isEmpty()) {
-      return null;
+    for(DriveEvent driveEvent: driveEvents) {
+      coordinates.addAll(driveEvent.coordinates);
     }
 
     for (DrivingScoreCalculator calculator: DrivingScoreCalculator.values()) {
-      drivingScore.scores.add(calculator.getScore(drivingScore.coordinates));
+      drivingScore.scores.add(calculator.getScore(coordinates));
     }
 
     return drivingScore;
