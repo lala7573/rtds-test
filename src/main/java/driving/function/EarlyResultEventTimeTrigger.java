@@ -12,10 +12,11 @@ import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
 import org.apache.flink.streaming.api.windowing.triggers.TriggerResult;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import util.DateUtils;
 
 @Slf4j
 public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWindow> {
-  ListStateDescriptor<Long> timerDesc = new ListStateDescriptor<>("timers", Long.class);
+  ListStateDescriptor<Long> endMessageTimerDesc = new ListStateDescriptor<>("timers", Long.class);
   ReducingStateDescriptor<Long> countDesc = new ReducingStateDescriptor<>("count", new LongAdder(), Long.class);
   ReducingStateDescriptor<Long> lastCountWhenFiringDesc = new ReducingStateDescriptor<>("lastCount", new LongAdder(), Long.class);
 
@@ -25,6 +26,7 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
   public TriggerResult onElement(T element, long timestamp, TimeWindow timeWindow, TriggerContext triggerContext)
       throws Exception {
     log.info("onElement(mTs: " + timeWindow.maxTimestamp() +", currWm: " + triggerContext.getCurrentWatermark() +")");
+    log.info("timestamp: {}", timestamp);
     triggerContext.getPartitionedState(countDesc).add(1L);
     log.info("count: {}", triggerContext.getPartitionedState(countDesc).get());
 
@@ -32,11 +34,11 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
       return fireOrContinue(triggerContext);
     } else {
       if (eval(element)) { // 마지막이면 현재시간을 eventtime으로 넣어서 다음 onElement나 onEventTime에 무조건 fire되도록 만듦.
-        log.info("this is last one");
-
+        log.info("registerEventTimeTimer(last one) {}", DateUtils.isoDateTime(timestamp));
         triggerContext.registerEventTimeTimer(timestamp);
-        triggerContext.getPartitionedState(timerDesc).add(timestamp);
+        triggerContext.getPartitionedState(endMessageTimerDesc).add(timestamp);
       } else {
+        log.info("registerEventTimeTimer {}", DateUtils.isoDateTime(timestamp));
         triggerContext.registerEventTimeTimer(timeWindow.maxTimestamp());
       }
       return TriggerResult.CONTINUE;
@@ -49,11 +51,9 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
     ReducingState<Long> lastCountState = triggerContext.getPartitionedState(lastCountWhenFiringDesc);
     Long lastCount = lastCountState.get();
 
-    // might cause error
     if (lastCount == null) {
       lastCount = 0L;
     }
-
     Long diff = count - lastCount;
     lastCountState.add(diff);
 
@@ -78,7 +78,7 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
     log.info("onEventTime(timestamp: {}, mTs: {})", timestamp, timeWindow.maxTimestamp());
     if (timestamp < timeWindow.maxTimestamp()) {
       triggerContext.deleteEventTimeTimer(timestamp);
-      ListState<Long> timerState = triggerContext.getPartitionedState(timerDesc);
+      ListState<Long> timerState = triggerContext.getPartitionedState(endMessageTimerDesc);
       List<Long> filteredTimestamp = StreamSupport
           .stream(timerState.get().spliterator(), false)
           .filter(x -> x != timestamp)
@@ -106,9 +106,9 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
     log.info("onMerge");
     ctx.mergePartitionedState(countDesc);
     ctx.mergePartitionedState(lastCountWhenFiringDesc);
-    ctx.mergePartitionedState(timerDesc);
+    ctx.mergePartitionedState(endMessageTimerDesc);
 
-    ListState<Long> timer = ctx.getPartitionedState(timerDesc);
+    ListState<Long> timer = ctx.getPartitionedState(endMessageTimerDesc);
 
     if (timer.get() != null) {
       log.info("timer: " + timer.get());

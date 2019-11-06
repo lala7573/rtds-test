@@ -24,9 +24,11 @@ public class ReadKafkaJob {
     env.getConfig().setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 10000));
     env.enableCheckpointing(1000 * 10); // create a checkpoint every 1 seconds
     env.getConfig().setGlobalJobParameters(parameterTool); // make parameters available in the web interface
-    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+    env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+
 
     DataStream dataStream = env.addSource(getConsumer(parameterTool)).name("KafkaConsumer");
+
     DrivingScoreJob.process(dataStream).addSink(getKafkaProducer(parameterTool));
 
     env.execute("ReadKafka");
