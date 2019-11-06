@@ -25,20 +25,19 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
   @Override
   public TriggerResult onElement(T element, long timestamp, TimeWindow timeWindow, TriggerContext triggerContext)
       throws Exception {
-    log.info("onElement(mTs: " + timeWindow.maxTimestamp() +", currWm: " + triggerContext.getCurrentWatermark() +")");
-    log.info("timestamp: {}", timestamp);
+    log.debug("onElement(ts: {}, mTs: {}, currWm: {})", timestamp, timeWindow.maxTimestamp(), triggerContext.getCurrentWatermark());
     triggerContext.getPartitionedState(countDesc).add(1L);
-    log.info("count: {}", triggerContext.getPartitionedState(countDesc).get());
+    log.debug("count: {}", triggerContext.getPartitionedState(countDesc).get());
 
     if (timeWindow.maxTimestamp() <= triggerContext.getCurrentWatermark()) {
       return fireOrContinue(triggerContext);
     } else {
       if (eval(element)) { // 마지막이면 현재시간을 eventtime으로 넣어서 다음 onElement나 onEventTime에 무조건 fire되도록 만듦.
-        log.info("registerEventTimeTimer(last one) {}", DateUtils.isoDateTime(timestamp));
+        log.debug("registerEventTimeTimer(last one) {}", DateUtils.isoDateTime(timestamp));
         triggerContext.registerEventTimeTimer(timestamp);
         triggerContext.getPartitionedState(endMessageTimerDesc).add(timestamp);
       } else {
-        log.info("registerEventTimeTimer {}", DateUtils.isoDateTime(timestamp));
+        log.debug("registerEventTimeTimer {}", DateUtils.isoDateTime(timestamp));
         triggerContext.registerEventTimeTimer(timeWindow.maxTimestamp());
       }
       return TriggerResult.CONTINUE;
@@ -46,7 +45,7 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
   }
 
   TriggerResult fireOrContinue(TriggerContext triggerContext) throws Exception {
-    log.info("fireOrContinue");
+    log.debug("fireOrContinue");
     Long count = triggerContext.getPartitionedState(countDesc).get();
     ReducingState<Long> lastCountState = triggerContext.getPartitionedState(lastCountWhenFiringDesc);
     Long lastCount = lastCountState.get();
@@ -68,14 +67,13 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
   @Override
   public TriggerResult onProcessingTime(long timestamp, TimeWindow timeWindow,
       TriggerContext triggerContext) throws Exception {
-    log.info("onProcessingTime");
     return TriggerResult.CONTINUE;
   }
 
   @Override
   public TriggerResult onEventTime(long timestamp, TimeWindow timeWindow, TriggerContext triggerContext)
       throws Exception {
-    log.info("onEventTime(timestamp: {}, mTs: {})", timestamp, timeWindow.maxTimestamp());
+    log.debug("onEventTime(timestamp: {}, mTs: {}, currWm: {})", timestamp, timeWindow.maxTimestamp(), triggerContext.getCurrentWatermark());
     if (timestamp < timeWindow.maxTimestamp()) {
       triggerContext.deleteEventTimeTimer(timestamp);
       ListState<Long> timerState = triggerContext.getPartitionedState(endMessageTimerDesc);
@@ -96,14 +94,14 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
 
   @Override
   public boolean canMerge() {
-    log.info("canMerge");
+    log.debug("canMerge");
     return true;
   }
 
   @Override
   public void onMerge(TimeWindow window,
       OnMergeContext ctx) throws Exception {
-    log.info("onMerge");
+    log.debug("onMerge");
     ctx.mergePartitionedState(countDesc);
     ctx.mergePartitionedState(lastCountWhenFiringDesc);
     ctx.mergePartitionedState(endMessageTimerDesc);
@@ -111,7 +109,7 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
     ListState<Long> timer = ctx.getPartitionedState(endMessageTimerDesc);
 
     if (timer.get() != null) {
-      log.info("timer: " + timer.get());
+      log.debug("timer: " + timer.get());
       timer.get().forEach(timestamp -> ctx.registerEventTimeTimer(timestamp));
     }
     ctx.registerEventTimeTimer(window.maxTimestamp());
@@ -126,7 +124,7 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
 
   @Override
   public void clear(TimeWindow timeWindow, TriggerContext triggerContext) throws Exception {
-    log.info("Clear");
+    log.debug("Clear");
     triggerContext.deleteEventTimeTimer(timeWindow.maxTimestamp());
   }
 
@@ -134,9 +132,9 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
   private static class LongAdder implements ReduceFunction<Long> {
 
     @Override
-    public Long reduce(Long aLong, Long t1) {
-      log.info("aLong: {} t1: {}", aLong, t1);
-      return aLong + t1;
+    public Long reduce(Long a, Long b) {
+      log.debug("a: {} b: {}", a, b);
+      return a + b;
     }
   }
 }

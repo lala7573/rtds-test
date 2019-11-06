@@ -25,7 +25,7 @@ public class DriverTest {
 
     Producer<String, String> producer = new KafkaProducer<>(props);
 
-    for (DriveEvent i: fastFinishDriver("ppoya", "집")) {
+    for (DriveEvent i: fastFinishDriver("joanne", "집")) {
       String message = JsonUtils.writeAsString(i);
       producer.send(new ProducerRecord<>("input-topic", message));
     }
@@ -35,22 +35,7 @@ public class DriverTest {
   }
   @Test
   public void test() {
-
     for(DriveEvent i: fastFinishDriver("joanne", "H스퀘어")) {
-      System.out.println(JsonUtils.writeAsString(i));
-//      for (DriveCoordinate coordinate: i.getCoordinates()) {
-//        System.out.println(coordinate);
-//      }
-    }
-
-    for(DriveEvent i: suddenStopDriver("dana", "동은i유치원")) {
-      System.out.println(JsonUtils.writeAsString(i));
-//      for (DriveCoordinate coordinate: i.getCoordinates()) {
-//        System.out.println(coordinate);
-//      }
-    }
-
-    for(DriveEvent i: suddenStopDriver("jeonghee", "서울교대")) {
       System.out.println(JsonUtils.writeAsString(i));
 //      for (DriveCoordinate coordinate: i.getCoordinates()) {
 //        System.out.println(coordinate);
