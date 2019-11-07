@@ -1,26 +1,25 @@
 package driving.job;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static junit.framework.TestCase.assertTrue;
 
-import driving.model.DriveEvent;
-import driving.model.DriveSummary;
 import driving.DrivingScoreJob;
+import driving.model.DriveEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
 import org.apache.flink.streaming.api.functions.source.SourceFunction;
-import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.junit.ClassRule;
 import org.junit.Test;
 import util.JsonUtils;
 
+@Slf4j
 public class DrivingScoreJobTest {
 
   @ClassRule
@@ -47,23 +46,25 @@ public class DrivingScoreJobTest {
 
       @Override
       public void run(SourceContext<String> ctx) throws Exception {
+        List<DriveEvent> joanne = DriverTest.suddenStopDriver("joanne", "H스퀘어");
+        collectAsJson(ctx, joanne.subList(0, joanne.size()-1));
+        collectAsJson(ctx, DriverTest.normalDriver("dana", "동은유치원"));
 
-        for (DriveEvent event: DriverTest.suddenStopDriver("joanne", "H스퀘어")) {
-          System.out.println(JsonUtils.writeAsString(event));
+        while (CollectSink.values.stream().filter(x-> x.contains("joanne")).count() != 1) {
+          collectAsJson(ctx, DriverTest.randomDriver());
+        }
+
+        Thread.sleep(5000);
+      }
+
+      public void collectAsJson(SourceContext<String> ctx, List<DriveEvent> events)
+          throws InterruptedException {
+        log.info("generated size: {} tid: {}", events.size(), events.get(0).transactionId());
+        for (DriveEvent event: events) {
           ctx.collect(JsonUtils.writeAsString(event));
-          Thread.sleep(1000 * 1);
+          Thread.sleep(1000);
+//          break;
         }
-
-        for (DriveEvent event: DriverTest.normalDriver("dana", "동은유치원")) {
-          System.out.println(JsonUtils.writeAsString(event));
-          ctx.collect(JsonUtils.writeAsString(event));
-          Thread.sleep(1000 * 1);
-        }
-
-        while(CollectSink.values.size() == 0) {
-          Thread.sleep(1000 * 5);
-        }
-
       }
 
       @Override
@@ -76,18 +77,16 @@ public class DrivingScoreJobTest {
       }
     });
 
-//        .addSink(new CollectDriveEvent());
-
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
     DrivingScoreJob.process(dataStream).addSink(new CollectSink()).name("TestSink");
-    // execute
 
     System.out.println(env.getStreamTimeCharacteristic());
     env.execute("Hello, World!");
 
     // verify your results
+    System.out.println("SINK Values-------");
     System.out.println(CollectSink.values);
-    assertEquals(1, CollectSink.values.size());
-//    assertTrue(CollectSink.values.containsAll(list(2L, 22L, 23L)));
+    assertTrue(CollectSink.values.size() > 0);
   }
 
   // create a testing sink

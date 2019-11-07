@@ -8,8 +8,11 @@ import driving.model.DriveEvent;
 import driving.model.DriveEvent.MessageType;
 import driving.model.DriveSummary;
 import java.sql.Timestamp;
+import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
@@ -29,29 +32,27 @@ public class DrivingScoreJob {
         new BoundedOutOfOrdernessTimestampExtractor<DriveEvent>(seconds(1)) {
           @Override
           public long extractTimestamp(DriveEvent driveEvent) {
-            long currentTimestamp = Timestamp.valueOf(driveEvent.getTimestamp()).getTime();
-            log.info("seq: {}, time: {}", driveEvent.getMessageSequenceNumber(), DateUtils.isoDateTime(currentTimestamp));
-            return currentTimestamp;
+            return Timestamp.valueOf(driveEvent.getTimestamp()).getTime();
           }
         }).name("BOOTimeExtractor")
-        .keyBy(new KeySelector<DriveEvent, String>() {
-          @Override
-          public String getKey(DriveEvent driveEvent) throws Exception {
-            return driveEvent.getUserId()+ "/" + driveEvent.getDestination();
-          }
-        })
+        .keyBy((KeySelector<DriveEvent, String>) DriveEvent::transactionId)
         .window(EventTimeSessionWindows.withGap(Time.minutes(10)))
         .trigger(
             new EarlyResultEventTimeTrigger<DriveEvent>() {
               @Override
-              public boolean eval(DriveEvent element) {
-                return element.getMessageType() == MessageType.END;
+              public Optional<Long> eval(DriveEvent element) {
+                return element.getMessageType() == MessageType.END? Optional.of(element.getMessageSequenceNumber()): Optional.empty();
               }
             }
         )
         .aggregate(new StreamAggregator<>()).name("StreamAggregator")
-        .map(driveEvents ->
-            DriveSummary.create(driveEvents.collect(Collectors.toList()))).name("DriveSummary")
-        .map(JsonUtils::writeAsString);
+        .map(new MapFunction<Stream<DriveEvent>, Optional<DriveSummary>>() {
+          @Override
+          public Optional<DriveSummary> map(Stream<DriveEvent> driveEvents) throws Exception {
+                return DriveSummary.createIfPerfect(driveEvents.collect(Collectors.toList()));
+          }
+        }).name("DriveSummary")
+        .filter(Optional::isPresent)
+        .map(x-> JsonUtils.writeAsString(x.get()));
   }
 }

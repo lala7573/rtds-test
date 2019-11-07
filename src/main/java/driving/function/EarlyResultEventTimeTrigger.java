@@ -1,63 +1,69 @@
 package driving.function;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.common.state.ReducingState;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.streaming.api.windowing.triggers.Trigger;
 import org.apache.flink.streaming.api.windowing.triggers.TriggerResult;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
-import util.DateUtils;
 
 @Slf4j
 public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWindow> {
   ListStateDescriptor<Long> endMessageTimerDesc = new ListStateDescriptor<>("timers", Long.class);
+  ValueStateDescriptor<Long> expectedCountDesc = new ValueStateDescriptor<Long>("expectCount", Long.class);
   ReducingStateDescriptor<Long> countDesc = new ReducingStateDescriptor<>("count", new LongAdder(), Long.class);
-  ReducingStateDescriptor<Long> lastCountWhenFiringDesc = new ReducingStateDescriptor<>("lastCount", new LongAdder(), Long.class);
+  ReducingStateDescriptor<Long> lastCountDesc = new ReducingStateDescriptor<>("lastCount", new LongAdder(), Long.class);
 
-  public abstract boolean eval(T element);
+  public abstract Optional<Long> eval(T element);
 
   @Override
   public TriggerResult onElement(T element, long timestamp, TimeWindow timeWindow, TriggerContext triggerContext)
       throws Exception {
-    log.debug("onElement(ts: {}, mTs: {}, currWm: {})", timestamp, timeWindow.maxTimestamp(), triggerContext.getCurrentWatermark());
     triggerContext.getPartitionedState(countDesc).add(1L);
-    log.debug("count: {}", triggerContext.getPartitionedState(countDesc).get());
+    log.debug("onElement(ts: {}, mTs: {}, currWm: {}), count({})", timestamp, timeWindow.maxTimestamp(), triggerContext.getCurrentWatermark(), triggerContext.getPartitionedState(countDesc).get());
 
     if (timeWindow.maxTimestamp() <= triggerContext.getCurrentWatermark()) {
       return fireOrContinue(triggerContext);
     } else {
-      if (eval(element)) { // 마지막이면 현재시간을 eventtime으로 넣어서 다음 onElement나 onEventTime에 무조건 fire되도록 만듦.
-        log.debug("registerEventTimeTimer(last one) {}", DateUtils.isoDateTime(timestamp));
+      Optional<Long> lastCountOpt = eval(element);
+      if (lastCountOpt.isPresent()) {
         triggerContext.registerEventTimeTimer(timestamp);
+        triggerContext.getPartitionedState(expectedCountDesc).update(lastCountOpt.get());
         triggerContext.getPartitionedState(endMessageTimerDesc).add(timestamp);
       } else {
-        log.debug("registerEventTimeTimer {}", DateUtils.isoDateTime(timestamp));
         triggerContext.registerEventTimeTimer(timeWindow.maxTimestamp());
       }
       return TriggerResult.CONTINUE;
     }
   }
 
+  boolean isCountAsExpected(TriggerContext triggerContext) throws Exception {
+    Long lastCount = triggerContext.getPartitionedState(expectedCountDesc).value();
+    Long count = triggerContext.getPartitionedState(countDesc).get();
+
+    return count != null && count.equals(lastCount);
+  }
+
   TriggerResult fireOrContinue(TriggerContext triggerContext) throws Exception {
     log.debug("fireOrContinue");
-    Long count = triggerContext.getPartitionedState(countDesc).get();
-    ReducingState<Long> lastCountState = triggerContext.getPartitionedState(lastCountWhenFiringDesc);
-    Long lastCount = lastCountState.get();
 
+    Long lastCount = triggerContext.getPartitionedState(lastCountDesc).get();
+    Long count = triggerContext.getPartitionedState(countDesc).get();
     if (lastCount == null) {
       lastCount = 0L;
     }
-    Long diff = count - lastCount;
-    lastCountState.add(diff);
 
-    if (diff > 0) {
-      log.info("FIRE! diff: {}, count: {}, lastCount: {}", diff, count, lastCount);
+    Long diff = count - lastCount;
+    if (isCountAsExpected(triggerContext) && diff > 0) {
+      // prevent same data triggered
+      triggerContext.getPartitionedState(lastCountDesc).add(diff);
       return TriggerResult.FIRE;
     } else {
       return TriggerResult.CONTINUE;
@@ -94,7 +100,6 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
 
   @Override
   public boolean canMerge() {
-    log.debug("canMerge");
     return true;
   }
 
@@ -103,7 +108,7 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
       OnMergeContext ctx) throws Exception {
     log.debug("onMerge");
     ctx.mergePartitionedState(countDesc);
-    ctx.mergePartitionedState(lastCountWhenFiringDesc);
+    ctx.mergePartitionedState(lastCountDesc);
     ctx.mergePartitionedState(endMessageTimerDesc);
 
     ListState<Long> timer = ctx.getPartitionedState(endMessageTimerDesc);
@@ -113,13 +118,6 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
       timer.get().forEach(timestamp -> ctx.registerEventTimeTimer(timestamp));
     }
     ctx.registerEventTimeTimer(window.maxTimestamp());
-    // only register a timer if the watermark is not yet past the end of the merged window
-    // this is in line with the logic in onElement(). If the watermark is past the end of
-    // the window onElement() will fire and setting a timer here would fire the window twice.
-//    long windowMaxTimestamp = window.maxTimestamp();
-//    if (windowMaxTimestamp > ctx.getCurrentWatermark()) {
-//      ctx.registerEventTimeTimer(window.maxTimestamp());
-//    }
   }
 
   @Override
@@ -133,7 +131,6 @@ public abstract class EarlyResultEventTimeTrigger<T> extends Trigger<T, TimeWind
 
     @Override
     public Long reduce(Long a, Long b) {
-      log.debug("a: {} b: {}", a, b);
       return a + b;
     }
   }

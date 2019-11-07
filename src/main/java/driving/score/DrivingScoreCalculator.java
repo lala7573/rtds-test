@@ -11,7 +11,7 @@ public enum DrivingScoreCalculator {
       for (int i = 0; i < coordinates.size(); i ++) {
         DriveCoordinate curr = coordinates.get(i);
 
-        if (curr.getDistancePerSec() < curr.getSpeedGuideInKMPerHour()) {
+        if (curr.getDistancePerSec() > curr.getSpeedGuideInKMPerHour() * 1.2) {
           speeding += 1;
         }
       }
@@ -27,7 +27,7 @@ public enum DrivingScoreCalculator {
         DriveCoordinate curr = coordinates.get(i);
         DriveCoordinate next = coordinates.get(i + 1);
 
-        double acc = curr.getDistancePerSec() - next.getDistancePerSec();
+        double acc = next.getDistancePerSec() - curr.getDistancePerSec();
         if (acc >= 10) {
           rapidAcc += 1;
         }
@@ -44,7 +44,7 @@ public enum DrivingScoreCalculator {
         DriveCoordinate curr = coordinates.get(i);
         DriveCoordinate next = coordinates.get(i + 1);
 
-        double acc = curr.getDistancePerSec() - next.getDistancePerSec();
+        double acc = next.getDistancePerSec() - curr.getDistancePerSec();
         if (acc < -10) {
           rapidDecel += 1;
         }

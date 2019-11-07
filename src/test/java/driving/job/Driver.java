@@ -95,7 +95,7 @@ public class Driver {
   }
 
   static class Counter {
-    private int counter = 0;
+    private int counter = 1;
 
     int getCounter() {
       return counter ++;

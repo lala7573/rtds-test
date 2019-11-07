@@ -1,6 +1,5 @@
 package driving;
 
-import driving.KafkaStreamingJob.Config;
 import java.util.Properties;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -8,10 +7,8 @@ import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
-import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 
 public class ReadKafkaJob {
 
@@ -24,7 +21,7 @@ public class ReadKafkaJob {
     env.getConfig().setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 10000));
     env.enableCheckpointing(1000 * 10); // create a checkpoint every 1 seconds
     env.getConfig().setGlobalJobParameters(parameterTool); // make parameters available in the web interface
-    env.setStreamTimeCharacteristic(TimeCharacteristic.ProcessingTime);
+    env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
 
     DataStream dataStream = env.addSource(getConsumer(parameterTool)).name("KafkaConsumer");
